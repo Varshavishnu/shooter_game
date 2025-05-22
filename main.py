@@ -196,7 +196,7 @@ class Soldier(pygame.sprite.Sprite):
             self.double_jump_available = True  # Enable double jump after first jump
             self.last_jump_time = pygame.time.get_ticks()
             # Temporarily increase speed during jump to cross pits
-            self.speed = self.base_speed * 3.0
+            self.speed = self.base_speed * 3.5  # Increased to 3.5x speed boost
 
         self.vel_y += GRAVITY
         if self.vel_y > 10:
@@ -221,14 +221,17 @@ class Soldier(pygame.sprite.Sprite):
                     # Reset speed after landing
                     self.speed = self.base_speed
 
-        # Fallback mechanism: Force a jump if near water
-        water_check_rect = pygame.Rect(self.rect.x + dx - 20, self.rect.y + dy, self.width + 40, self.height)
+        # Enhanced fallback mechanism: Emergency jump if very close to water
+        water_check_rect = pygame.Rect(self.rect.x + dx - 30, self.rect.y + dy, self.width + 60, self.height + 10)
         if pygame.sprite.spritecollide(self, water_group, False, collided=lambda s, w: water_check_rect.colliderect(w.rect)):
             if not self.in_air and self.jump_cooldown == 0:
-                print("Fallback jump triggered: Soldier near water!")
+                print("Emergency jump triggered: Soldier very close to water!")
                 self.jump = True
                 self.jump_cooldown = 60
                 self.vel_y = -22
+                # Move back further to ensure a good runway
+                if self.direction == 1 and self.rect.left > 0:
+                    self.rect.x -= 50
 
         if pygame.sprite.spritecollide(self, water_group, False):
             self.health = 0
@@ -268,7 +271,7 @@ class Soldier(pygame.sprite.Sprite):
             return
 
         # Look ahead in the direction of movement (right)
-        look_ahead = 300
+        look_ahead = 350  # Increased to 350 pixels for earlier detection
         jump_height_threshold = self.rect.height * 2
 
         # Check for obstacles (like rocks)
@@ -300,14 +303,14 @@ class Soldier(pygame.sprite.Sprite):
         double_jump_triggered = False
         if self.in_air and self.double_jump_available:
             current_time = pygame.time.get_ticks()
-            # Allow double jump within 500ms of the first jump
-            if current_time - self.last_jump_time <= 500:
-                # Check if still near the pit while in the air
-                mid_air_water_check = pygame.Rect(self.rect.right - 20, self.rect.bottom - 10, look_ahead // 2, 30)
+            # Extended double jump window to 750ms
+            if current_time - self.last_jump_time <= 750:
+                # Adjusted mid-air check to trigger closer to the peak of the first jump
+                mid_air_water_check = pygame.Rect(self.rect.right - 10, self.rect.bottom - 20, look_ahead // 2, 40)
                 for water in water_group:
                     if water.rect.colliderect(mid_air_water_check):
                         print("Double jump triggered: Soldier in air near pit!")
-                        self.vel_y = -18  # Slightly less than initial jump
+                        self.vel_y = -20  # Increased double jump velocity
                         self.double_jump_available = False
                         self.jump_cooldown = 60
                         jump_fx.play()
@@ -318,7 +321,7 @@ class Soldier(pygame.sprite.Sprite):
         if not self.in_air and (obstacle_detected or not ground_detected or water_detected):
             print(f"Initial jump triggered! Obstacle: {obstacle_detected}, Ground detected: {ground_detected}, Water detected: {water_detected}")
             if self.direction == 1 and self.rect.left > 0:
-                self.rect.x -= 40
+                self.rect.x -= 50  # Increased to 50 pixels for better runway
             self.jump = True
             self.jump_cooldown = 60
             self.vel_y = -22
@@ -539,7 +542,7 @@ class Grenade(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
         self.width = self.image.get_width()
-        self.height = self.image.get_height()  # Fixed syntax error by removing system message
+        self.height = self.image.get_height()
         self.direction = direction
 
     def update(self):
@@ -756,7 +759,7 @@ while run:
             if shoot:
                 player.shoot()
             elif grenade and grenade_thrown == False and player.grenades > 0:
-                grenade = Grenade(player.rect.centerx + (0.5 * player.rect.size[0] * self.direction),\
+                grenade = Grenade(player.rect.centerx + (0.5 * player.rect.size[0] * player.direction),\
                                  player.rect.top, player.direction)
                 grenade_group.add(grenade)
                 player.grenades -= 1

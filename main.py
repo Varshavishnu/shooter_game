@@ -5,6 +5,12 @@ import random
 import csv
 import button
 import math
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import random
+import numpy as np
+from collections import deque
 
 mixer.init()
 pygame.init()
@@ -110,6 +116,80 @@ def reset_level():
         r = [-1] * COLS
         data.append(r)
     return data
+
+class DQNetwork(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(DQNetwork, self).__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(input_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
+            nn.Linear(128, output_dim)
+        )
+
+    def forward(self, x):
+        return self.fc(x)
+
+class DQNAgent:
+    def __init__(self, state_size, action_size):
+        self.state_size = state_size
+        self.action_size = action_size
+        self.memory = deque(maxlen=10000)
+        self.gamma = 0.99
+        self.epsilon = 1.0
+        self.epsilon_min = 0.1
+        self.epsilon_decay = 0.995
+        self.learning_rate = 0.001
+        self.batch_size = 32
+
+        self.model = DQNetwork(state_size, action_size)
+        self.target_model = DQNetwork(state_size, action_size)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.update_target_model()
+
+    def remember(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
+
+    def act(self, state):
+        if np.random.rand() < self.epsilon:
+            return random.randrange(self.action_size)
+        state = torch.FloatTensor(state).unsqueeze(0)  # Add batch dimension
+        with torch.no_grad():
+            q_values = self.model(state)
+        return torch.argmax(q_values).item()
+
+    def train(self):
+        if len(self.memory) < self.batch_size:
+            return
+
+        minibatch = random.sample(self.memory, self.batch_size)
+        for state, action, reward, next_state, done in minibatch:
+            state_tensor = torch.FloatTensor(state).unsqueeze(0)
+            next_state_tensor = torch.FloatTensor(next_state).unsqueeze(0)
+
+            target = reward
+            if not done:
+                with torch.no_grad():
+                    target += self.gamma * torch.max(self.target_model(next_state_tensor)).item()
+
+            current_qs = self.model(state_tensor)
+            target_qs = current_qs.clone()
+            target_qs[0][action] = target
+
+            loss = nn.MSELoss()(current_qs, target_qs)
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+
+        # Decay exploration rate
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
+
+    def update_target_model(self):
+        self.target_model.load_state_dict(self.model.state_dict())
+
 
 class Soldier(pygame.sprite.Sprite):
     def __init__(self, char_type, x, y, scale, speed, ammo, grenades):
@@ -720,15 +800,13 @@ while run:
                         min_distance = distance
                         nearest_enemy = enemy
 
-            if nearest_enemy:
-                if min_distance < 100:
-                    player.state = 0
-                elif min_distance < 300:
-                    player.state = 1
-                else:
-                    player.state = 2
+            if nearest_enemy and min_distance < 100:  # stop & shoot
+                moving_right = False
+                moving_left = False
+                shoot = True
             else:
-                player.state = 2
+                moving_right = True
+                shoot = False
 
             action = player.choose_action(player.state)
             shoot = (action == 1)
